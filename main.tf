@@ -1,15 +1,3 @@
-# with this block it will you can provide the detail which will help to connect to azure if not done interactively
-provider "azurerm" {
-  features {
-
-  }
-  subscription_id = "__subscription_id__"
-  client_id       = "__client_id__"
-  client_secret   = "__client_secret__"
-  tenant_id       = "__tenant_id__"
-  environment     = "public"
-}
-
 resource "azurerm_resource_group" "azrg" {
   name     = "tfrg"
   location = "centralUS"
@@ -29,9 +17,9 @@ resource "azurerm_api_management" "azapim" {
   resource_group_name = azurerm_resource_group.azrg.name
   location            = azurerm_resource_group.azrg.location
 
-  publisher_email = "user@email.com"
-  publisher_name  = "User Name"
-  sku_name        = "Developer_1"
+  publisher_email = var.publisher_email
+  publisher_name  = var.publisher_name
+  sku_name        = local.sku_name
   lifecycle {
     precondition {
       condition     = data.azurerm_key_vault.azkv.location != azurerm_resource_group.azrg.location
@@ -42,12 +30,62 @@ resource "azurerm_api_management" "azapim" {
       error_message = "Not able to create"
 
     }
+    create_before_destroy = false
+    ignore_changes = [  ]
+    prevent_destroy = false
+    replace_triggered_by = [ azurerm_resource_group.azrg, azurerm_resource_group.azrgold ]
 
   }
   timeouts {
-    create = "10m"
-    delete = "5m"
-    update = "7m"
+    create = "30m"
+    delete = "10m"
+    update = "20m"
   }
   depends_on = [azurerm_resource_group.azrg, azurerm_resource_group.azrg2]
+  provisioner "local-exec" {
+    when       = destroy
+    command    = "echo 'destroy time provisioner'"
+    on_failure = fail
+
+  }
+  provisioner "local-exec" {
+    when       = create
+    command    = "echo 'create time provisioner'"
+    on_failure = continue
+
+  }
+}
+resource "azurerm_resource_group" "azrgold" {
+  name     = "oldversionaliasrg"
+  location = azurerm_resource_group.azrg2.location
+  provider = azurerm.lowerversion
+  provisioner "local-exec" {
+    when    = create
+    command = "echo 'create time provisioner'"
+    on_failure = fail
+
+  }
+  provisioner "" {
+    
+  }
+
+}
+
+
+module "keyvault" {
+  source        = "./Modules/keyvault"
+  azrgname      = var.azrgname
+  azurelocation = var.azurelocation
+  kvname        = var.kvname
+  #depends_on    = [module.aks]
+
+
+}
+resource "azurerm_storage_account" "azstrg" {
+  count = 4
+  account_replication_type = "GRS"
+  resource_group_name = var.azrgname
+  account_tier = "standard"
+  location = var.azurelocation
+  name = "server${count.index}strgacc"
 }
